@@ -1,0 +1,64 @@
+# ==========================================
+# Environment variables & Secrets (CRITICAL)
+# ==========================================
+.env
+*.env
+.env.local
+.env.*.local
+orchestration/.env
+
+# ==========================================
+# Virtual Environments & Build
+# ==========================================
+.venv/
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# ==========================================
+# Python Bytecode & Cache
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# Runtime Match Data
+# ==========================================
+# Ignore raw match dumps (they are stored in the S3 landing zone),
+# but preserve the directory structure (.gitkeep) and the item price cache (item_prices.json).
+data/matches/*
+!data/matches/.gitkeep
+
+# ==========================================
+# Airflow Logs & Runs
+# ==========================================
+orchestration/logs/
+orchestration/plugins/__pycache__/
+
+# ==========================================
+# Temporary Scratch & Debug Files
+# ==========================================
+actual_rendered*.js
+scratch_*.*
+*.tmp
+services/engine/static/icons/test_*.png
+services/engine/static/test_mockup.html
+
+# ==========================================
+# IDE & OS Artifacts
+# ==========================================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db

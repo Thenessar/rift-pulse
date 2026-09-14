@@ -1,0 +1,66 @@
+{
+  "8112": {
+    "name": "Electrocute",
+    "path": "/static/icons/runes/keystone_8112.png"
+  },
+  "8128": {
+    "name": "Dark Harvest",
+    "path": "/static/icons/runes/keystone_8128.png"
+  },
+  "9923": {
+    "name": "Hail of Blades",
+    "path": "/static/icons/runes/keystone_9923.png"
+  },
+  "8351": {
+    "name": "Glacial Augment",
+    "path": "/static/icons/runes/keystone_8351.png"
+  },
+  "8360": {
+    "name": "Unsealed Spellbook",
+    "path": "/static/icons/runes/keystone_8360.png"
+  },
+  "8369": {
+    "name": "First Strike",
+    "path": "/static/icons/runes/keystone_8369.png"
+  },
+  "8005": {
+    "name": "Press the Attack",
+    "path": "/static/icons/runes/keystone_8005.png"
+  },
+  "8008": {
+    "name": "Lethal Tempo",
+    "path": "/static/icons/runes/keystone_8008.png"
+  },
+  "8021": {
+    "name": "Fleet Footwork",
+    "path": "/static/icons/runes/keystone_8021.png"
+  },
+  "8010": {
+    "name": "Conqueror",
+    "path": "/static/icons/runes/keystone_8010.png"
+  },
+  "8437": {
+    "name": "Grasp of the Undying",
+    "path": "/static/icons/runes/keystone_8437.png"
+  },
+  "8439": {
+    "name": "Aftershock",
+    "path": "/static/icons/runes/keystone_8439.png"
+  },
+  "8465": {
+    "name": "Guardian",
+    "path": "/static/icons/runes/keystone_8465.png"
+  },
+  "8214": {
+    "name": "Summon Aery",
+    "path": "/static/icons/runes/keystone_8214.png"
+  },
+  "8229": {
+    "name": "Arcane Comet",
+    "path": "/static/icons/runes/keystone_8229.png"
+  },
+  "8230": {
+    "name": "Phase Rush",
+    "path": "/static/icons/runes/keystone_8230.png"
+  }
+}

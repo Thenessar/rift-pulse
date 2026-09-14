@@ -1,0 +1,29 @@
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = ["data/matches"]
+
+[tool.ruff.lint]
+select = [
+    "E4",
+    "E7",
+    "E9",
+    "F",
+    "I",
+    "B",
+    "UP",
+    "SIM",
+    "C4",
+    "PIE",
+    "RUF",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"lakehouse/notebooks/01_landing_to_bronze.py" = ["F821"]
+# Session files intentionally remain open across telemetry ticks and are closed during finalization.
+"services/engine/src/poller.py" = ["SIM115"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"

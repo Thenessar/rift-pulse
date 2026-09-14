@@ -1,0 +1,8 @@
+<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Single Coin 3D Rim -->
+  <path d="M4 9C4 11.5 6.7 13.5 10 13.5C13.3 13.5 16 11.5 16 9V10.5C16 13 13.3 15 10 15C6.7 15 4 13 4 10.5V9Z" fill="#A09B8C" opacity="0.8"/>
+  <!-- Single Coin Face -->
+  <ellipse cx="10" cy="9" rx="6" ry="3.5" fill="#A09B8C"/>
+  <!-- Single Coin Inner Rim -->
+  <ellipse cx="10" cy="9" rx="4.2" ry="2.3" stroke="#090d16" stroke-width="0.8" fill="none" opacity="0.45"/>
+</svg>

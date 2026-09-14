@@ -1,0 +1,8 @@
+boto3==1.43.93
+fastapi==0.141.1
+httpx==0.28.1
+numpy==2.2.6
+onnx==1.22.0
+onnxruntime==1.23.2
+sse-starlette==3.4.11
+uvicorn==0.52.4
