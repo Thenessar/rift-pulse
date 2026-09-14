@@ -190,10 +190,13 @@ class TestAirflowOrchestrationDAG(unittest.TestCase):
 
         with open("orchestration/requirements.txt", encoding="utf-8") as f:
             requirements = f.read()
+        with open("orchestration/Dockerfile", encoding="utf-8") as f:
+            dockerfile = f.read()
         with open("orchestration/.dockerignore", encoding="utf-8") as f:
             dockerignore = f.read()
 
         self.assertIn("apache-airflow-providers-databricks==7.5.0", requirements)
+        self.assertIn("constraints-no-providers-${PYTHON_VERSION}.txt", dockerfile)
         self.assertIn("AIRFLOW_CONN_DATABRICKS_DEFAULT", content)
         self.assertIn("AIRFLOW_VAR_DATABRICKS_JOB_ID", content)
         self.assertIn("127.0.0.1:8080:8080", content)
