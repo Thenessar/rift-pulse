@@ -101,8 +101,12 @@ df_bronze = (
     df_raw.withColumn("_ingested_at", F.current_timestamp())
     .withColumn("_orchestrator_run_id", F.lit(orchestrator_run_id))
     .withColumn(
+        "_landing_date_from_path",
+        F.regexp_extract(F.col("_source_file"), r"/date=(\d{4}-\d{2}-\d{2})/", 1),
+    )
+    .withColumn(
         "landing_date",
-        F.to_date(F.regexp_extract(F.col("_source_file"), r"/date=(\d{4}-\d{2}-\d{2})/", 1)),
+        F.expr("try_cast(nullif(_landing_date_from_path, '') AS DATE)"),
     )
     .withColumn(
         "_recording_id_from_filename",

@@ -137,6 +137,8 @@ class TestDatabricksAutoLoaderScript(unittest.TestCase):
         self.assertIn("_ingested_at", code)
         self.assertIn('F.col("_metadata.file_path")', code)
         self.assertIn("landing_date", code)
+        self.assertIn("_landing_date_from_path", code)
+        self.assertIn("try_cast(nullif(_landing_date_from_path, '') AS DATE)", code)
         self.assertIn("_recording_id_from_filename", code)
         self.assertIn('environment = "prod"', code)
         self.assertNotIn("F.input_file_name()", code)
