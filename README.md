@@ -7,8 +7,8 @@ Rift Pulse records League of Legends Live Client telemetry, calculates live matc
 1. The engine polls the local LoL Live Client API.
 2. During a match it writes normalized JSONL and raw compressed JSONL to `data/matches`.
 3. When the match ends, the raw session and summary are uploaded to `s3://<bucket>/landing/date=YYYY-MM-DD/`.
-4. Airflow triggers the Databricks job once per day.
-5. The canonical notebook at `lakehouse/notebooks/01_landing_to_bronze.py` ingests landing data into the `bronze_matches` Delta table and runs `OPTIMIZE`.
+4. Airflow triggers the Databricks job at 01:00 Europe/Warsaw.
+5. The canonical notebook at `lakehouse/notebooks/01_landing_to_bronze.py` uses Auto Loader `AvailableNow` to ingest raw gzip files into a Delta table backed by Parquet under `bronze/match_snapshots`.
 
 ## Local setup
 
@@ -43,13 +43,9 @@ Tests use `tests/fixtures/sample_live_data.json` and mock post-match S3 uploads.
 
 ## Airflow and Databricks
 
-Copy `orchestration/.env.example` to `orchestration/.env`, configure AWS and Databricks credentials, and start Airflow from the orchestration directory:
+The Databricks job is defined in `databricks.yml` and `resources/landing_to_bronze.job.yml`. Airflow only triggers and monitors that job; Databricks owns S3 access and data processing.
 
-```powershell
-docker compose up -d
-```
-
-Only `daily_lakehouse_ingest_dag` triggers ingestion. The Databricks job identified by `DATABRICKS_JOB_ID` should execute `lakehouse/notebooks/01_landing_to_bronze.py`.
+See `docs/airflow-ubuntu.md` for the complete Databricks deployment, Unity Catalog prerequisites, Ubuntu setup, smoke test, and recovery commands.
 
 ## Model
 

@@ -1,0 +1,21 @@
+bundle:
+  name: rift-pulse
+
+include:
+  - resources/*.yml
+
+variables:
+  s3_bucket:
+    description: S3 bucket containing landing/, bronze/, and Auto Loader state.
+  catalog:
+    description: Existing Unity Catalog catalog used by Rift Pulse.
+  bronze_schema:
+    description: Unity Catalog schema for Bronze tables.
+    default: bronze
+
+targets:
+  prod:
+    default: true
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

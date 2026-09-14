@@ -1,0 +1,28 @@
+resources:
+  jobs:
+    landing_to_bronze:
+      name: "[${bundle.target}] rift-pulse-landing-to-bronze"
+      description: "Auto Loader AvailableNow ingestion from S3 landing to Bronze Delta. Scheduled only by Airflow."
+      max_concurrent_runs: 1
+      timeout_seconds: 5400
+      parameters:
+        - name: bucket
+          default: ${var.s3_bucket}
+        - name: catalog
+          default: ${var.catalog}
+        - name: bronze_schema
+          default: ${var.bronze_schema}
+        - name: bronze_table
+          default: match_snapshots
+        - name: orchestrator_run_id
+          default: manual
+        - name: orchestrator_logical_date
+          default: manual
+      tasks:
+        - task_key: ingest_landing_to_bronze
+          notebook_task:
+            notebook_path: ../lakehouse/notebooks/01_landing_to_bronze.py
+            source: WORKSPACE
+          timeout_seconds: 4500
+          max_retries: 2
+          min_retry_interval_millis: 60000

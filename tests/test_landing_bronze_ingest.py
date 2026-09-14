@@ -130,17 +130,24 @@ class TestDatabricksAutoLoaderScript(unittest.TestCase):
         self.assertIn('option("cloudFiles.schemaLocation", schema_path)', code)
         self.assertIn('option("cloudFiles.inferColumnTypes", "true")', code)
         self.assertIn('option("cloudFiles.schemaEvolutionMode", "addNewColumns")', code)
-        self.assertIn('option("cloudFiles.rescuedDataColumn", "_rescued_data")', code)
+        self.assertIn('option("rescuedDataColumn", "_rescued_data")', code)
+        self.assertIn('option("pathGlobFilter", "raw_session_*.jsonl.gz")', code)
 
-        # 2. Audit and Data Skipping columns
+        # 2. Audit metadata comes from the supported hidden metadata column.
         self.assertIn("_ingested_at", code)
-        self.assertIn("_source_file", code)
-        self.assertIn("game_date", code)
-        self.assertIn("session_id", code)
+        self.assertIn('F.col("_metadata.file_path")', code)
+        self.assertIn("landing_date", code)
+        self.assertIn("_recording_id_from_filename", code)
+        self.assertIn('environment = "prod"', code)
+        self.assertNotIn("F.input_file_name()", code)
+        self.assertNotIn('F.col("gameCreation")', code)
 
-        # 3. Flat Delta table: writeStream with delta, availableNow, NO partitionBy
+        # 3. Flat external Delta table under bronze/, with schema evolution enabled.
         self.assertIn('format("delta")', code)
         self.assertIn('outputMode("append")', code)
+        self.assertIn('option("mergeSchema", "true")', code)
+        self.assertIn("CREATE TABLE IF NOT EXISTS", code)
+        self.assertIn("LOCATION '{bronze_path}'", code)
         self.assertIn("trigger(availableNow=True)", code)
         self.assertIn("toTable(table_name)", code)
         self.assertNotIn(
@@ -149,8 +156,8 @@ class TestDatabricksAutoLoaderScript(unittest.TestCase):
             "Bronze writeStream must remain flat (no .partitionBy() call) to prevent small files!",
         )
 
-        # 4. Compaction
-        self.assertIn("OPTIMIZE", code)
+        # 4. The small daily volume does not justify unconditional compaction.
+        self.assertNotIn('spark.sql(f"OPTIMIZE', code)
         self.assertIn("awaitTermination()", code)
 
 
@@ -163,23 +170,56 @@ class TestAirflowOrchestrationDAG(unittest.TestCase):
             code = f.read()
 
         ast.parse(code)
-        self.assertIn('dag_id="daily_lakehouse_ingest_dag"', code)
+        self.assertIn('dag_id="daily_landing_to_bronze"', code)
         self.assertIn('schedule="0 1 * * *"', code)
-        self.assertIn('"owner": "data_engineers"', code)
+        self.assertIn('"owner": "data_engineering"', code)
         self.assertIn('"retries": 2', code)
+        self.assertIn("tz=WARSAW", code)
         self.assertIn("DatabricksRunNowOperator", code)
         self.assertIn('databricks_conn_id="databricks_default"', code)
-        self.assertIn('"autoloader"', code)
-        self.assertIn('"bronze"', code)
+        self.assertIn('job_id="{{ var.value.databricks_job_id }}"', code)
+        self.assertIn("job_parameters=", code)
+        self.assertIn("idempotency_token=", code)
+        self.assertIn("wait_for_termination=True", code)
 
     def test_docker_compose_databricks_provider(self):
-        """Validates that apache-airflow-providers-databricks is included in docker-compose.yaml."""
+        """Validate the pinned image and environment-provisioned Airflow connection."""
         compose_path = "orchestration/docker-compose.yaml"
         with open(compose_path, encoding="utf-8") as f:
             content = f.read()
 
-        self.assertIn("apache-airflow-providers-databricks", content)
-        self.assertIn("DATABRICKS_JOB_ID", content)
+        with open("orchestration/requirements.txt", encoding="utf-8") as f:
+            requirements = f.read()
+        with open("orchestration/.dockerignore", encoding="utf-8") as f:
+            dockerignore = f.read()
+
+        self.assertIn("apache-airflow-providers-databricks==7.5.0", requirements)
+        self.assertIn("AIRFLOW_CONN_DATABRICKS_DEFAULT", content)
+        self.assertIn("AIRFLOW_VAR_DATABRICKS_JOB_ID", content)
+        self.assertIn("127.0.0.1:8080:8080", content)
+        self.assertNotIn("AWS_ACCESS_KEY_ID", content)
+        self.assertIn(".env", dockerignore.splitlines())
+
+    def test_databricks_bundle_defines_unscheduled_single_job(self):
+        """The bundle deploys compute; Airflow remains the only scheduler."""
+        with open("databricks.yml", encoding="utf-8") as f:
+            bundle = f.read()
+        with open("resources/landing_to_bronze.job.yml", encoding="utf-8") as f:
+            job = f.read()
+
+        self.assertIn("resources/*.yml", bundle)
+        self.assertIn("s3_bucket:", bundle)
+        self.assertIn("prod:", bundle)
+        self.assertIn("mode: production", bundle)
+        self.assertIn(
+            "/Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}",
+            bundle,
+        )
+        self.assertNotIn("dev:", bundle)
+        self.assertIn("landing_to_bronze:", job)
+        self.assertIn("max_concurrent_runs: 1", job)
+        self.assertIn("01_landing_to_bronze.py", job)
+        self.assertNotIn("schedule:", job)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,2 @@
+# Provider 7.5.0 supports Airflow 2.10 and exposes DatabricksRunNowOperator.
+apache-airflow-providers-databricks==7.5.0
