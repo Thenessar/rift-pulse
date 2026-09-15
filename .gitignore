@@ -11,6 +11,7 @@ orchestration/.env
 # Virtual Environments & Build
 # ==========================================
 .venv/
+.venv-dbt/
 env/
 venv/
 ENV/
@@ -42,6 +43,7 @@ data/matches/*
 # Airflow Logs & Runs
 # ==========================================
 orchestration/logs/
+orchestration/dbt-artifacts/
 orchestration/plugins/__pycache__/
 
 # ==========================================

@@ -1,0 +1,17 @@
+name: rift_pulse
+version: "1.0.0"
+config-version: 2
+
+profile: rift_pulse
+
+model-paths: ["models"]
+test-paths: ["tests"]
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  rift_pulse:
+    staging:
+      +materialized: view
+    marts:
+      balance:
+        +materialized: table

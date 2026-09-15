@@ -23,7 +23,10 @@ required_keys=(
   AIRFLOW_ADMIN_USERNAME
   AIRFLOW_ADMIN_PASSWORD
   DATABRICKS_HOST
-  DATABRICKS_TOKEN
+  DATABRICKS_HTTP_PATH
+  DATABRICKS_CATALOG
+  DATABRICKS_CLIENT_ID
+  DATABRICKS_CLIENT_SECRET
   DATABRICKS_JOB_ID
 )
 
@@ -40,7 +43,7 @@ if ! grep -Eq '^DATABRICKS_JOB_ID=[0-9]+$' .env; then
   exit 1
 fi
 
-mkdir -p logs
+mkdir -p logs dbt-artifacts
 docker compose config --quiet
 docker compose build
 docker compose up airflow-init

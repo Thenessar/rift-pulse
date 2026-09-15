@@ -2,8 +2,8 @@ name: rift-pulse-airflow
 
 x-airflow-common: &airflow-common
   build:
-    context: .
-    dockerfile: Dockerfile
+    context: ..
+    dockerfile: orchestration/Dockerfile
     args:
       AIRFLOW_VERSION: ${AIRFLOW_VERSION:-2.10.5}
   image: rift-pulse-airflow:${AIRFLOW_VERSION:-2.10.5}
@@ -18,11 +18,19 @@ x-airflow-common: &airflow-common
     AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY}
     AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
     AIRFLOW_CONN_DATABRICKS_DEFAULT: >-
-      {"conn_type":"databricks","host":"${DATABRICKS_HOST}","password":"${DATABRICKS_TOKEN}"}
+      {"conn_type":"databricks","host":"${DATABRICKS_HOST}","login":"${DATABRICKS_CLIENT_ID}","password":"${DATABRICKS_CLIENT_SECRET}","extra":{"service_principal_oauth":true}}
     AIRFLOW_VAR_DATABRICKS_JOB_ID: ${DATABRICKS_JOB_ID}
+    DATABRICKS_HOST: ${DATABRICKS_HOST}
+    DATABRICKS_HTTP_PATH: ${DATABRICKS_HTTP_PATH}
+    DATABRICKS_CATALOG: ${DATABRICKS_CATALOG:-rift_pulse}
+    DATABRICKS_CLIENT_ID: ${DATABRICKS_CLIENT_ID}
+    DATABRICKS_CLIENT_SECRET: ${DATABRICKS_CLIENT_SECRET}
   volumes:
     - ./dags:/opt/airflow/dags:ro
     - ./logs:/opt/airflow/logs
+    - ../dbt:/opt/airflow/dbt:ro
+    - ./config/dbt/profiles.yml:/opt/airflow/.dbt/profiles.yml:ro
+    - ./dbt-artifacts:/opt/airflow/dbt-target
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     postgres:

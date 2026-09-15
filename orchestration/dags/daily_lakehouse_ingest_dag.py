@@ -2,6 +2,7 @@ from datetime import timedelta
 
 import pendulum
 from airflow.decorators import dag
+from airflow.operators.bash import BashOperator
 from airflow.providers.databricks.operators.databricks import DatabricksRunNowOperator
 
 WARSAW = "Europe/Warsaw"
@@ -17,18 +18,18 @@ DEFAULT_ARGS = {
 
 @dag(
     dag_id="daily_lakehouse_ingest",
-    description="Trigger and monitor the Databricks Landing-to-Silver job.",
+    description="Build Landing/Bronze/Silver in Databricks, then tested Gold with dbt.",
     default_args=DEFAULT_ARGS,
     schedule="0 1 * * *",
     start_date=pendulum.datetime(2026, 1, 1, tz=WARSAW),
     catchup=False,
     max_active_runs=1,
     dagrun_timeout=timedelta(hours=2),
-    tags=["rift-pulse", "bronze", "silver", "databricks"],
+    tags=["rift-pulse", "bronze", "silver", "gold", "databricks", "dbt"],
 )
 def daily_lakehouse_ingest():
-    """Airflow orchestrates; all data processing remains in Databricks."""
-    DatabricksRunNowOperator(
+    """Run dbt only after the Databricks job has completed successfully."""
+    build_silver = DatabricksRunNowOperator(
         task_id="run_databricks_lakehouse_ingest",
         databricks_conn_id="databricks_default",
         job_id="{{ var.value.databricks_job_id }}",
@@ -45,6 +46,28 @@ def daily_lakehouse_ingest():
         do_xcom_push=True,
         execution_timeout=timedelta(minutes=90),
     )
+
+    build_gold = BashOperator(
+        task_id="build_gold_with_dbt",
+        bash_command="""
+set -Eeuo pipefail
+/opt/dbt_venv/bin/dbt source freshness \
+  --project-dir /opt/airflow/dbt \
+  --profiles-dir /opt/airflow/.dbt \
+  --target prod \
+  --target-path /opt/airflow/dbt-target
+/opt/dbt_venv/bin/dbt build \
+  --fail-fast \
+  --project-dir /opt/airflow/dbt \
+  --profiles-dir /opt/airflow/.dbt \
+  --target prod \
+  --target-path /opt/airflow/dbt-target
+""",
+        execution_timeout=timedelta(minutes=60),
+        append_env=True,
+    )
+
+    build_silver >> build_gold
 
 
 daily_lakehouse_ingest_pipeline = daily_lakehouse_ingest()

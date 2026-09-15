@@ -1,0 +1,2 @@
+# Keep local development and the Airflow image on the same tested adapter.
+dbt-databricks==1.12.5

@@ -1,0 +1,60 @@
+version: 2
+
+models:
+  - name: player_match_builds
+    description: >-
+      One non-bot participant in one balance-eligible match, with a deduplicated
+      final item build. Unknown outcomes remain null in won_match.
+    columns:
+      - name: recording_id
+        data_tests: [not_null]
+      - name: participant_key
+        data_tests: [not_null, unique]
+      - name: game_mode
+        data_tests: [not_null]
+      - name: champion_name
+        data_tests: [not_null]
+      - name: team
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['BLUE', 'RED']
+      - name: is_balance_eligible
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true]
+                quote: false
+      - name: match_ended_at
+        data_tests: [not_null]
+
+  - name: champion_balance
+    description: >-
+      Champion balance by game mode. Pick rate uses every eligible non-bot player
+      slot in the mode; win rate uses only champion picks with a confirmed result.
+    columns:
+      - name: game_mode
+        data_tests: [not_null]
+      - name: champion_name
+        data_tests: [not_null]
+      - name: picks
+        data_tests: [not_null]
+      - name: player_slots
+        data_tests: [not_null]
+
+  - name: item_balance
+    description: >-
+      Final-build item balance by game mode and item. Pick rate uses every eligible
+      non-bot player in the mode; win rate uses only holders with a confirmed result.
+    columns:
+      - name: game_mode
+        data_tests: [not_null]
+      - name: item_id
+        data_tests: [not_null]
+      - name: item_name
+        data_tests: [not_null]
+      - name: holders
+        data_tests: [not_null]
+      - name: eligible_players
+        data_tests: [not_null]
