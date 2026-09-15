@@ -1,8 +1,8 @@
 resources:
   jobs:
     landing_to_bronze:
-      name: "[${bundle.target}] rift-pulse-landing-to-bronze"
-      description: "Auto Loader AvailableNow ingestion from S3 landing to Bronze Delta. Scheduled only by Airflow."
+      name: "[${bundle.target}] rift-pulse-landing-bronze-silver"
+      description: "Auto Loader ingestion followed by the MVP Bronze-to-Silver rebuild. Scheduled only by Airflow."
       max_concurrent_runs: 1
       timeout_seconds: 5400
       parameters:
@@ -12,8 +12,12 @@ resources:
           default: ${var.catalog}
         - name: bronze_schema
           default: ${var.bronze_schema}
-        - name: bronze_table
-          default: match_snapshots
+        - name: silver_schema
+          default: ${var.silver_schema}
+        - name: bronze_observations_table
+          default: observations_raw
+        - name: bronze_manifests_table
+          default: recording_manifests_raw
         - name: orchestrator_run_id
           default: manual
         - name: orchestrator_logical_date
@@ -25,4 +29,13 @@ resources:
             source: WORKSPACE
           timeout_seconds: 4500
           max_retries: 2
+          min_retry_interval_millis: 60000
+        - task_key: transform_bronze_to_silver
+          depends_on:
+            - task_key: ingest_landing_to_bronze
+          notebook_task:
+            notebook_path: ../lakehouse/notebooks/02_bronze_to_silver.py
+            source: WORKSPACE
+          timeout_seconds: 4500
+          max_retries: 1
           min_retry_interval_millis: 60000

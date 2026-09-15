@@ -1,6 +1,7 @@
 import asyncio
 import glob
 import gzip
+import hashlib
 import json
 import logging
 import os
@@ -8,7 +9,7 @@ import threading
 import time
 import uuid
 from contextlib import suppress
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -16,6 +17,7 @@ import numpy as np
 import onnxruntime as ort
 
 from services.engine.src.items import item_price_manager
+from services.outcomes import extract_observed_outcome
 
 logger = logging.getLogger("rift-pulse.engine")
 
@@ -318,7 +320,7 @@ class TelemetryEngine:
             self._current_raw_file = None
 
     def _persist_tick(self, payload: dict[str, Any], raw_json: dict[str, Any]):
-        """Appends normalized state and 100% raw JSON to True Bronze."""
+        """Append normalized state and a versioned raw observation envelope."""
         if self._current_file is not None:
             try:
                 line = json.dumps(payload, ensure_ascii=False)
@@ -329,7 +331,19 @@ class TelemetryEngine:
 
         if self._current_raw_file is not None:
             try:
-                raw_line = json.dumps(raw_json, ensure_ascii=False)
+                payload_json = json.dumps(raw_json, ensure_ascii=False, separators=(",", ":"))
+                observed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+                raw_envelope = {
+                    "schema_version": "1.0",
+                    "recording_id": self.session_id,
+                    "observation_id": str(uuid.uuid4()),
+                    "sequence_no": self.tick_counter,
+                    "observed_at_utc": observed_at,
+                    "collector_version": os.getenv("RIFT_PULSE_COLLECTOR_VERSION", "dev"),
+                    "payload_sha256": hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
+                    "payload_json": payload_json,
+                }
+                raw_line = json.dumps(raw_envelope, ensure_ascii=False, separators=(",", ":"))
                 self._current_raw_file.write(raw_line + "\n")
                 self._current_raw_file.flush()
             except Exception as e:
@@ -366,7 +380,7 @@ class TelemetryEngine:
         if self.latest_data is not None and self.latest_data.get("session_id") == self.session_id:
             summary = {
                 "session_id": self.session_id,
-                "recorded_at": datetime.utcnow().isoformat(),
+                "recorded_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                 "duration_formatted": self.latest_data.get("game_time_formatted", "00:00"),
                 "duration_seconds": self.latest_data.get("game_time_seconds", 0.0),
                 "total_ticks": self.tick_counter,
@@ -375,6 +389,10 @@ class TelemetryEngine:
                 "predicted_winner": "BLUE"
                 if self.latest_data.get("inference", {}).get("win_probability_blue", 0.5) >= 0.5
                 else "RED",
+                # A model prediction is never a match outcome.
+                "observed_winner": self.latest_data.get("outcome", {}).get("observed_winner"),
+                "outcome_status": self.latest_data.get("outcome", {}).get("outcome_status", "UNKNOWN"),
+                "outcome_source": self.latest_data.get("outcome", {}).get("outcome_source"),
                 "game_mode": self.latest_data.get("game_mode", "UNKNOWN"),
                 "raw_bronze_file": f"raw_session_{self.session_id}.jsonl.gz",
             }
@@ -437,6 +455,7 @@ class TelemetryEngine:
         game_time = float(game_data.get("gameTime", 0.0))
         all_players = raw_data.get("allPlayers", [])
         events_list = raw_data.get("events", {}).get("Events", [])
+        observed_outcome = extract_observed_outcome(raw_data)
 
         # 1. Collect detailed player stats
         blue_players = []
@@ -825,6 +844,7 @@ class TelemetryEngine:
             "game_time_seconds": round(game_time, 1),
             "game_time_formatted": formatted_time,
             "game_mode": game_data.get("gameMode", "CLASSIC"),
+            "outcome": observed_outcome,
             "metrics": {
                 "blue_gold": int(blue_total_gold),
                 "red_gold": int(red_total_gold),

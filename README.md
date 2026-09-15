@@ -5,10 +5,13 @@ Rift Pulse records League of Legends Live Client telemetry, calculates live matc
 ## Data flow
 
 1. The engine polls the local LoL Live Client API.
-2. During a match it writes normalized JSONL and raw compressed JSONL to `data/matches`.
-3. When the match ends, the raw session and summary are uploaded to `s3://<bucket>/landing/date=YYYY-MM-DD/`.
+2. During a match it writes normalized JSONL and versioned raw observation envelopes to compressed JSONL in `data/matches`.
+3. When the match ends, the raw file is validated and uploaded under a content-addressed S3 key. A recording manifest is uploaded last as its commit marker.
 4. Airflow triggers the Databricks job at 01:00 Europe/Warsaw.
-5. The canonical notebook at `lakehouse/notebooks/01_landing_to_bronze.py` uses Auto Loader `AvailableNow` to ingest raw gzip files into a Delta table backed by Parquet under `bronze/match_snapshots`.
+5. `lakehouse/notebooks/01_landing_to_bronze.py` uses Auto Loader `AvailableNow` to preserve observation and manifest JSON as text in separate Bronze Delta tables.
+6. `lakehouse/notebooks/02_bronze_to_silver.py` parses envelope v1 and legacy records, validates and deduplicates observations, and rebuilds the small Silver MVP tables.
+
+The Silver MVP exposes `matches`, `observations`, `match_participants`, `match_participant_items`, and `quarantine_observations`. These are the inputs for future champion and final-item pick-rate/win-rate aggregates. A model prediction is never treated as a match result. Win rate can use only sessions where a Live Client `GameEnd` result was mapped exactly to the active player's team; all other outcomes remain unknown.
 
 ## Local setup
 
@@ -28,6 +31,12 @@ python -m services.engine.src.main
 ```
 
 The application is available at `http://localhost:8000`. The League client endpoint defaults to `https://127.0.0.1:2999/liveclientdata/allgamedata`.
+
+To validate and upload all locally retained raw sessions using idempotent, content-addressed landing keys:
+
+```powershell
+python -m services.archiver.s3_archiver --all
+```
 
 ## Tests
 

@@ -12,6 +12,9 @@ variables:
   bronze_schema:
     description: Unity Catalog schema for Bronze tables.
     default: bronze
+  silver_schema:
+    description: Unity Catalog schema for validated MVP tables.
+    default: silver
 
 targets:
   prod:

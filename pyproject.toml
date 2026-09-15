@@ -19,7 +19,7 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"lakehouse/notebooks/01_landing_to_bronze.py" = ["F821"]
+"lakehouse/notebooks/*.py" = ["F821"]
 # Session files intentionally remain open across telemetry ticks and are closed during finalization.
 "services/engine/src/poller.py" = ["SIM115"]
 

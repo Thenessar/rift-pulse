@@ -33,16 +33,19 @@ class TestS3LandingUpload(unittest.TestCase):
             result = self.archiver.upload_session_to_landing(session_id=session_id, game_end_date="2026-09-15")
 
             self.assertEqual(result["status"], "success")
-            expected_key = f"landing/date=2026-09-15/raw_session_{session_id}.jsonl.gz"
-            self.assertIn(expected_key, result["uploaded_keys"])
+            self.assertEqual(mock_s3.upload_file.call_count, 2)
+            raw_key, manifest_key = result["uploaded_keys"]
+            self.assertTrue(raw_key.startswith(f"landing/date=2026-09-15/raw_session_{session_id}_"))
+            self.assertTrue(raw_key.endswith(".jsonl.gz"))
+            self.assertTrue(manifest_key.startswith(f"landing/date=2026-09-15/recording_{session_id}_manifest_"))
+            self.assertTrue(manifest_key.endswith(".json"))
 
-            # Verify boto3 call arguments
-            mock_s3.upload_file.assert_called_once_with(
-                Filename=raw_path,
-                Bucket=self.archiver.bucket_name,
-                Key=expected_key,
-                ExtraArgs={"ContentType": "application/gzip"},
-            )
+            manifest_path = os.path.join(self.data_dir, f"recording_{session_id}_manifest.json")
+            with open(manifest_path, encoding="utf-8") as f:
+                manifest = json.load(f)
+            self.assertEqual(manifest["raw"]["record_count"], 1)
+            self.assertEqual(manifest["raw"]["schema_versions"], ["legacy"])
+            self.assertEqual(manifest["completion_status"], "INCOMPLETE")
 
     def test_upload_session_derived_from_summary_recorded_at(self):
         """Verifies that partition date is deterministically derived from summary recorded_at (UTC)."""
@@ -67,11 +70,11 @@ class TestS3LandingUpload(unittest.TestCase):
             result = self.archiver.upload_session_to_landing(session_id=session_id)
 
             self.assertEqual(result["status"], "success")
-            expected_raw_key = f"landing/date=2026-09-14/raw_session_{session_id}.jsonl.gz"
-            expected_sum_key = f"landing/date=2026-09-14/session_{session_id}_summary.json"
-            self.assertIn(expected_raw_key, result["uploaded_keys"])
-            self.assertIn(expected_sum_key, result["uploaded_keys"])
-            self.assertEqual(mock_s3.upload_file.call_count, 2)
+            raw_key, summary_key, manifest_key = result["uploaded_keys"]
+            self.assertTrue(raw_key.startswith(f"landing/date=2026-09-14/raw_session_{session_id}_"))
+            self.assertTrue(summary_key.startswith(f"landing/date=2026-09-14/session_{session_id}_summary_"))
+            self.assertTrue(manifest_key.startswith(f"landing/date=2026-09-14/recording_{session_id}_manifest_"))
+            self.assertEqual(mock_s3.upload_file.call_count, 3)
 
     def test_upload_session_fallback_to_file_mtime(self):
         """Verifies that when summary is missing, file mtime (UTC) is used as the partition date."""
@@ -92,8 +95,9 @@ class TestS3LandingUpload(unittest.TestCase):
 
             self.assertEqual(result["status"], "success")
             expected_date = datetime.utcfromtimestamp(target_timestamp).strftime("%Y-%m-%d")
-            expected_key = f"landing/date={expected_date}/raw_session_{session_id}.jsonl.gz"
-            self.assertIn(expected_key, result["uploaded_keys"])
+            self.assertTrue(
+                result["uploaded_keys"][0].startswith(f"landing/date={expected_date}/raw_session_{session_id}_")
+            )
 
     def test_upload_session_empty_skipped(self):
         """Verifies that empty/non-existent session files are skipped gracefully."""
@@ -102,11 +106,80 @@ class TestS3LandingUpload(unittest.TestCase):
         self.assertEqual(result["status"], "skipped")
         mock_boto.assert_not_called()
 
+    def test_corrupt_gzip_is_rejected_before_upload(self):
+        session_id = "corrupt-session"
+        raw_path = os.path.join(self.data_dir, f"raw_session_{session_id}.jsonl.gz")
+        with open(raw_path, "wb") as f:
+            f.write(b"not-a-gzip-file" * 10)
+
+        with patch("boto3.client") as mock_boto:
+            result = self.archiver.upload_session_to_landing(session_id=session_id)
+
+        self.assertEqual(result["status"], "error")
+        mock_boto.assert_not_called()
+
+    def test_versioned_envelope_is_reflected_in_manifest(self):
+        session_id = "versioned-session"
+        raw_path = os.path.join(self.data_dir, f"raw_session_{session_id}.jsonl.gz")
+        payload_json = json.dumps(
+            {
+                "gameData": {"gameTime": 12.5, "gameMode": "CLASSIC"},
+                "activePlayer": {"riotId": "Player#EUW"},
+                "allPlayers": [{"riotId": "Player#EUW", "team": "ORDER"}],
+                "events": {"Events": [{"EventName": "GameEnd", "Result": "Win"}]},
+            }
+        )
+        envelope = {
+            "schema_version": "1.0",
+            "recording_id": session_id,
+            "observation_id": "observation-1",
+            "sequence_no": 1,
+            "observed_at_utc": "2026-09-15T12:00:00Z",
+            "collector_version": "test",
+            "payload_sha256": "test-hash",
+            "payload_json": payload_json,
+        }
+        with gzip.open(raw_path, "wt", encoding="utf-8") as f:
+            f.write(json.dumps(envelope) + "\n")
+
+        with patch("boto3.client"):
+            result = self.archiver.upload_session_to_landing(session_id=session_id)
+
+        self.assertEqual(result["status"], "success")
+        manifest_path = os.path.join(self.data_dir, f"recording_{session_id}_manifest.json")
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest = json.load(f)
+        self.assertEqual(manifest["raw"]["schema_versions"], ["1.0"])
+        self.assertEqual(manifest["raw"]["collector_versions"], ["test"])
+        self.assertEqual(manifest["raw"]["game_modes"], ["CLASSIC"])
+        self.assertEqual(manifest["observed_winner"], "BLUE")
+        self.assertEqual(manifest["outcome_status"], "OBSERVED")
+
+    def test_upload_all_sessions_reports_batch_result(self):
+        for session_id in ("session-a", "session-b"):
+            raw_path = os.path.join(self.data_dir, f"raw_session_{session_id}.jsonl.gz")
+            with gzip.open(raw_path, "wt", encoding="utf-8") as f:
+                f.write(json.dumps({"gameData": {"gameTime": 1}}) + "\n")
+
+        with patch.object(
+            self.archiver,
+            "upload_session_to_landing",
+            side_effect=[{"status": "success"}, {"status": "error"}],
+        ) as upload:
+            result = self.archiver.upload_all_sessions()
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["session_count"], 2)
+        self.assertEqual(result["success_count"], 1)
+        self.assertEqual(result["error_count"], 1)
+        self.assertEqual([call.args[0] for call in upload.call_args_list], ["session-a", "session-b"])
+
 
 class TestDatabricksAutoLoaderScript(unittest.TestCase):
     def setUp(self):
         self.script_paths = [
             "lakehouse/notebooks/01_landing_to_bronze.py",
+            "lakehouse/notebooks/02_bronze_to_silver.py",
         ]
 
     def test_scripts_exist(self):
@@ -126,30 +199,28 @@ class TestDatabricksAutoLoaderScript(unittest.TestCase):
         # Architectural assertions:
         # 1. Format is cloudFiles (Databricks Auto Loader)
         self.assertIn('format("cloudFiles")', code)
-        self.assertIn('option("cloudFiles.format", "json")', code)
-        self.assertIn('option("cloudFiles.schemaLocation", schema_path)', code)
-        self.assertIn('option("cloudFiles.inferColumnTypes", "true")', code)
-        self.assertIn('option("cloudFiles.schemaEvolutionMode", "addNewColumns")', code)
-        self.assertIn('option("rescuedDataColumn", "_rescued_data")', code)
-        self.assertIn('option("pathGlobFilter", "raw_session_*.jsonl.gz")', code)
+        self.assertIn('option("cloudFiles.format", "text")', code)
+        self.assertIn('option("pathGlobFilter", path_glob)', code)
+        self.assertIn('path_glob="raw_session_*.jsonl.gz"', code)
+        self.assertIn('path_glob="recording_*_manifest_*.json"', code)
+        self.assertIn('F.col("value").alias("_raw_json")', code)
 
         # 2. Audit metadata comes from the supported hidden metadata column.
         self.assertIn("_ingested_at", code)
         self.assertIn('F.col("_metadata.file_path")', code)
         self.assertIn("landing_date", code)
-        self.assertIn("_landing_date_from_path", code)
-        self.assertIn("try_cast(nullif(_landing_date_from_path, '') AS DATE)", code)
+        self.assertIn('r"/date=(\\d{4}-\\d{2}-\\d{2})/"', code)
+        self.assertIn("F.to_date", code)
         self.assertIn("_recording_id_from_filename", code)
-        self.assertIn('environment = "prod"', code)
+        self.assertIn('environment = get_parameter("environment", "prod")', code)
         self.assertNotIn("F.input_file_name()", code)
         self.assertNotIn('F.col("gameCreation")', code)
 
-        # 3. Flat external Delta table under bronze/, with schema evolution enabled.
+        # 3. Flat external Delta tables under bronze/.
         self.assertIn('format("delta")', code)
         self.assertIn('outputMode("append")', code)
-        self.assertIn('option("mergeSchema", "true")', code)
         self.assertIn("CREATE TABLE IF NOT EXISTS", code)
-        self.assertIn("LOCATION '{bronze_path}'", code)
+        self.assertIn("LOCATION '{target_path}'", code)
         self.assertIn("trigger(availableNow=True)", code)
         self.assertIn("toTable(table_name)", code)
         self.assertNotIn(
@@ -162,6 +233,24 @@ class TestDatabricksAutoLoaderScript(unittest.TestCase):
         self.assertNotIn('spark.sql(f"OPTIMIZE', code)
         self.assertIn("awaitTermination()", code)
 
+    def test_silver_script_models_only_balance_inputs(self):
+        with open("lakehouse/notebooks/02_bronze_to_silver.py", encoding="utf-8") as f:
+            code = f.read()
+
+        ast.parse(code)
+        self.assertIn('F.from_json("_raw_json", envelope_schema)', code)
+        self.assertIn('F.from_json("payload_json", payload_schema)', code)
+        self.assertIn('F.lit("legacy")', code)
+        self.assertIn("OBSERVATION_ID_CONFLICT", code)
+        self.assertIn('replace_silver_table(observations, "observations")', code)
+        self.assertIn('replace_silver_table(matches, "matches")', code)
+        self.assertIn('replace_silver_table(match_participants, "match_participants")', code)
+        self.assertIn('replace_silver_table(match_participant_items, "match_participant_items")', code)
+        self.assertIn('replace_silver_table(quarantine, "quarantine_observations")', code)
+        self.assertIn("is_balance_eligible", code)
+        self.assertIn("is_outcome_confirmed", code)
+        self.assertNotIn("predicted_winner).alias", code)
+
 
 class TestAirflowOrchestrationDAG(unittest.TestCase):
     def test_daily_lakehouse_ingest_dag_file(self):
@@ -172,7 +261,7 @@ class TestAirflowOrchestrationDAG(unittest.TestCase):
             code = f.read()
 
         ast.parse(code)
-        self.assertIn('dag_id="daily_landing_to_bronze"', code)
+        self.assertIn('dag_id="daily_lakehouse_ingest"', code)
         self.assertIn('schedule="0 1 * * *"', code)
         self.assertIn('"owner": "data_engineering"', code)
         self.assertIn('"retries": 2', code)
@@ -225,6 +314,9 @@ class TestAirflowOrchestrationDAG(unittest.TestCase):
         self.assertIn("landing_to_bronze:", job)
         self.assertIn("max_concurrent_runs: 1", job)
         self.assertIn("01_landing_to_bronze.py", job)
+        self.assertIn("02_bronze_to_silver.py", job)
+        self.assertIn("transform_bronze_to_silver", job)
+        self.assertIn("depends_on:", job)
         self.assertNotIn("schedule:", job)
 
 

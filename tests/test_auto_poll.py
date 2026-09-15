@@ -1,4 +1,5 @@
 import asyncio
+import gzip
 import json
 import os
 import tempfile
@@ -11,8 +12,42 @@ from fastapi.testclient import TestClient
 from services.engine.src.main import app
 from services.engine.src.main import engine as main_engine
 from services.engine.src.poller import TelemetryEngine
+from services.outcomes import extract_observed_outcome
 
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "sample_live_data.json")
+
+
+class TestObservedOutcome(unittest.TestCase):
+    def test_game_end_win_maps_exact_active_player_team(self):
+        raw = {
+            "activePlayer": {"riotId": "Player#EUW"},
+            "allPlayers": [
+                {"riotId": "Player#EUW", "team": "ORDER"},
+                {"riotId": "Opponent#EUW", "team": "CHAOS"},
+            ],
+            "events": {"Events": [{"EventName": "GameEnd", "Result": "Win"}]},
+        }
+
+        self.assertEqual(
+            extract_observed_outcome(raw),
+            {
+                "observed_winner": "BLUE",
+                "outcome_status": "OBSERVED",
+                "outcome_source": "riot_live_client_game_end",
+            },
+        )
+
+    def test_game_end_loss_maps_opposing_team(self):
+        raw = {
+            "activePlayer": {"riotIdGameName": "Player", "riotIdTagLine": "EUW"},
+            "allPlayers": [{"riotId": "Player#EUW", "team": "CHAOS"}],
+            "events": {"Events": [{"EventName": "GameEnd", "Result": "Lose"}]},
+        }
+
+        self.assertEqual(extract_observed_outcome(raw)["observed_winner"], "BLUE")
+
+    def test_missing_game_end_stays_unknown(self):
+        self.assertEqual(extract_observed_outcome({})["outcome_status"], "UNKNOWN")
 
 
 class TestAutoPollIdle(unittest.TestCase):
@@ -135,6 +170,20 @@ class TestAutoPollIdle(unittest.TestCase):
             self.assertTrue(os.path.exists(norm_file), f"Normalized session file missing: {norm_file}")
             self.assertTrue(os.path.exists(raw_file), f"Raw True Bronze file missing: {raw_file}")
             self.assertTrue(os.path.exists(summary_file), f"Summary file missing: {summary_file}")
+
+            with gzip.open(raw_file, "rt", encoding="utf-8") as f:
+                envelope = json.loads(next(line for line in f if line.strip()))
+            self.assertEqual(envelope["schema_version"], "1.0")
+            self.assertEqual(envelope["recording_id"], session_id)
+            self.assertTrue(envelope["observation_id"])
+            self.assertGreaterEqual(envelope["sequence_no"], 1)
+            self.assertTrue(envelope["observed_at_utc"].endswith("Z"))
+            self.assertEqual(json.loads(envelope["payload_json"])["gameData"], sample_data["gameData"])
+
+            with open(summary_file, encoding="utf-8") as f:
+                summary = json.load(f)
+            self.assertIsNone(summary["observed_winner"])
+            self.assertEqual(summary["outcome_status"], "UNKNOWN")
 
         with patch(
             "services.archiver.s3_archiver.S3Archiver.upload_session_to_landing",
