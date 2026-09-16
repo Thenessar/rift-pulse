@@ -55,12 +55,14 @@ set -Eeuo pipefail
   --project-dir /opt/airflow/dbt \
   --profiles-dir /opt/airflow/.dbt \
   --target prod \
+  --log-path /opt/airflow/dbt-target/logs \
   --target-path /opt/airflow/dbt-target
 /opt/dbt_venv/bin/dbt build \
   --fail-fast \
   --project-dir /opt/airflow/dbt \
   --profiles-dir /opt/airflow/.dbt \
   --target prod \
+  --log-path /opt/airflow/dbt-target/logs \
   --target-path /opt/airflow/dbt-target
 """,
         execution_timeout=timedelta(minutes=60),
